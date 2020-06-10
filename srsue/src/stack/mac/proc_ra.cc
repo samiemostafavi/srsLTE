@@ -161,7 +161,8 @@ void ra_proc::state_pdcch_setup()
     ra_tti  = info.tti_ra;
     ra_rnti = 1 + (ra_tti % 10) + info.f_id;
     rInfo("seq=%d, ra-rnti=0x%x, ra-tti=%d, f_id=%d\n", sel_preamble, ra_rnti, info.tti_ra, info.f_id);
-    log_h->console("Random Access Transmission: seq=%d, ra-rnti=0x%x\n", sel_preamble, ra_rnti);
+    log_h->console("Random Access Transmission: seq=%d, ra-rnti=0x%x, ra-tti=%d, f_id=%d\n", sel_preamble, ra_rnti,info.tti_ra,info.f_id);
+    //printf("Random Access Transmission: seq=%d, ra-rnti=0x%x\n", sel_preamble, ra_rnti);
     rar_window_st   = ra_tti + 3;
     rntis->rar_rnti = ra_rnti;
     state           = RESPONSE_RECEPTION;
@@ -178,10 +179,15 @@ void ra_proc::state_response_reception(uint32_t tti)
   // do nothing. Processing done in tb_decoded_ok()
   if (!rar_received) {
     uint32_t interval = srslte_tti_interval(tti, ra_tti + 3 + rach_cfg.responseWindowSize - 1);
+    //log_h->console("RAR is NOT received. tti: %d, ra_tti: %d, responseWindowSize:%d, interval: %d\n",(int)tti,(int)ra_tti,(int)rach_cfg.responseWindowSize,(int)interval);
     if (interval > 0 && interval < 100) {
       Error("RA response not received within the response window\n");
       response_error();
     }
+  }
+  else
+  {	
+    //log_h->console("RAR is received\n");
   }
 }
 
@@ -277,8 +283,10 @@ void ra_proc::resource_selection()
     if (sel_group == RA_GROUP_A) {
       if (rach_cfg.nof_groupA_preambles) {
         // randomly choose preamble from [0 nof_groupA_preambles)
-        sel_preamble = rand() % rach_cfg.nof_groupA_preambles;
+        //sel_preamble = rand() % rach_cfg.nof_groupA_preambles;
+	sel_preamble = 23; //schiessl
       } else {
+
         rError("Selected group preamble A but nof_groupA_preambles=0\n");
         state = IDLE;
         return; 
@@ -413,6 +421,12 @@ void ra_proc::tb_decoded_ok() {
             rar_pdu_msg.get()->get_ta_cmd(),
             rar_pdu_msg.get()->get_temp_crnti());
 
+      // Samie Debug
+      printf("RAR received for RAPID=%d, TA=%d, T-CRNTI=0x%x\n",
+            sel_preamble,
+            rar_pdu_msg.get()->get_ta_cmd(),
+            rar_pdu_msg.get()->get_temp_crnti());
+
       if (preambleIndex > 0) {
         // Preamble selected by Network
         complete();
@@ -443,6 +457,8 @@ void ra_proc::tb_decoded_ok() {
     } else {
       if (rar_pdu_msg.get()->has_rapid()) {
         rInfo("Found RAR for preamble %d\n", rar_pdu_msg.get()->get_rapid());
+	// Samie
+        printf("RAR Received for preamble %d, not %d\n", rar_pdu_msg.get()->get_rapid(),sel_preamble);
       }
     }
   }

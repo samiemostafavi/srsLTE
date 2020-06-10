@@ -118,7 +118,7 @@ int srslte_ue_cellsearch_init_multi(srslte_ue_cellsearch_t* q,
       ERROR("Error setting cell in ue_sync\n");
       goto clean_exit;
     }
-
+    
     for (int i = 0; i < nof_rx_antennas; i++) {
       q->sf_buffer[i] = srslte_vec_malloc(3 * sizeof(cf_t) * SRSLTE_SF_LEN_PRB(100));
     }

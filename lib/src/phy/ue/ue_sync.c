@@ -332,7 +332,6 @@ int srslte_ue_sync_set_cell(srslte_ue_sync_t *q, srslte_cell_t cell)
       /* If the cell is known, we work on a 1ms basis */
       q->nof_recv_sf = 1;
     }
-
     q->frame_len = q->nof_recv_sf*q->sf_len;
 
     if(q->fft_size < 700 && q->decimate) {

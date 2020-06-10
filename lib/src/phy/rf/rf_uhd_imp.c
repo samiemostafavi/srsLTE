@@ -121,6 +121,7 @@ static void* async_thread(void *h) {
   uhd_async_metadata_make(&md); 
   while(handler->async_thread_running) {
     bool valid; 
+    //printf("async_thread while \n");
     uhd_error err = uhd_tx_streamer_recv_async_msg(handler->tx_stream, &md, 0.5, &valid);
     if (err == UHD_ERROR_NONE) {
       if (valid) {
@@ -268,6 +269,7 @@ void rf_uhd_flush_buffer(void *h)
   void *data[2] = {tmp1, tmp2};
   do {
     n = rf_uhd_recv_with_time_multi(h, data, 1024, 0, NULL, NULL);
+    printf("rf_uhd_flush_buffer loop\n");
   } while (n > 0);  
 }
 
@@ -464,8 +466,9 @@ int rf_uhd_open_multi(char *args, void **h, uint32_t nof_channels)
     uhd_string_vector_free(&devices_str);
     
     /* Create UHD handler */
-    printf("Opening USRP with args: %s\n", args);
-    uhd_error error = uhd_usrp_make(&handler->usrp, args);
+    printf("Opening USRP with args schiessl: %s\n", args);
+    //uhd_error error = uhd_usrp_make(&handler->usrp, args); // schiessl: old
+    uhd_error error = 42; // schiessl: new: always create an error ==> Ignore UHD, will use SoapySDR instead
     if (error) {
       fprintf(stderr, "Error opening UHD: code %d\n", error);
       free(handler);
@@ -580,6 +583,7 @@ int rf_uhd_open_multi(char *args, void **h, uint32_t nof_channels)
     // Set starting gain to half maximum in case of using AGC
     rf_uhd_set_rx_gain(handler, handler->info.max_rx_gain*0.7);
 
+    printf("schiessl: if HAVE_ASYNC_THREAD\n");
 #if HAVE_ASYNC_THREAD
     if (start_async_thread) {
       // Start low priority thread to receive async commands
@@ -590,7 +594,7 @@ int rf_uhd_open_multi(char *args, void **h, uint32_t nof_channels)
       }
     }
 #endif
-
+    printf("schiessl: end if HAVE_ASYNC_THREAD\n");
     /* Restore priorities  */
     uhd_set_thread_priority(0, false);
 
@@ -795,6 +799,7 @@ int rf_uhd_recv_with_time(void *h,
                     time_t *secs,
                     double *frac_secs) 
 {
+  printf("rf_uhd_recv_with_time\n");
   return rf_uhd_recv_with_time_multi(h, &data, nsamples, blocking, secs, frac_secs);
 }
 
@@ -809,6 +814,7 @@ int rf_uhd_recv_with_time_multi(void *h,
   uhd_rx_metadata_handle *md = &handler->rx_md_first; 
   size_t rxd_samples = 0;
   size_t rxd_samples_total = 0;
+  static double frac_secs_prev = 0; //schiessl
   int trials = 0; 
   if (blocking) {
     while (rxd_samples_total < nsamples && trials < 100) {
@@ -822,6 +828,7 @@ int rf_uhd_recv_with_time_multi(void *h,
       size_t num_rx_samples = (num_samps_left > handler->rx_nof_samples) ? handler->rx_nof_samples : num_samps_left;
 
       rxd_samples = 0;
+      //printf("schiessl: recv:\n");
       uhd_error error = uhd_rx_streamer_recv(handler->rx_stream, buffs_ptr, 
                                              num_rx_samples, md, 1.0, false, &rxd_samples);
       if (error) {
@@ -860,6 +867,8 @@ int rf_uhd_recv_with_time_multi(void *h,
   }
   if (secs && frac_secs) {
     uhd_rx_metadata_time_spec(handler->rx_md_first, secs, frac_secs);
+    //printf("schiessl: %d, secs: %ld, frac_secs_us=%.2f, frac_secs_prev_us=%.2f, frac_secs_us_diff %.2f:\n", nsamples, *secs, (*frac_secs) * 1e6, frac_secs_prev*1e6, ((*frac_secs)-frac_secs_prev)*1e6);
+    //frac_secs_prev = *frac_secs; // schiessl
   }
   return rxd_samples_total;
 }

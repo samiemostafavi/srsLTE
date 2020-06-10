@@ -244,7 +244,10 @@ void phy::get_metrics(phy_metrics_t* m)
 void phy::set_timeadv_rar(uint32_t ta_cmd) {
   n_ta = srslte_N_ta_new_rar(ta_cmd);
   sfsync.set_time_adv_sec(((float)n_ta) * SRSLTE_LTE_TS);
+  
   Info("PHY:   Set TA RAR: ta_cmd: %d, n_ta: %d, ta_usec: %.1f\n", ta_cmd, n_ta, ((float) n_ta)*SRSLTE_LTE_TS*1e6);
+  // Samie debug
+  printf("PHY:   Set TA RAR: ta_cmd: %d, n_ta: %d, ta_usec: %.1f\n", ta_cmd, n_ta, ((float) n_ta)*SRSLTE_LTE_TS*1e6);
 }
 
 void phy::set_timeadv(uint32_t ta_cmd) {
@@ -341,7 +344,8 @@ uint32_t phy::get_current_earfcn() {
 
 void phy::prach_send(uint32_t preamble_idx, int allowed_subframe, float target_power_dbm)
 {
-  sfsync.set_time_adv_sec(0.0f);
+  // Samie
+  //sfsync.set_time_adv_sec(0.0f);
   if (!prach_buffer.prepare_to_send(preamble_idx, allowed_subframe, target_power_dbm)) {
     Error("Preparing PRACH to send\n");
   }

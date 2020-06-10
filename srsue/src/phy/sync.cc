@@ -32,6 +32,8 @@
 #define Info(fmt, ...)    if (SRSLTE_DEBUG_ENABLED) log_h->info(fmt, ##__VA_ARGS__)
 #define Debug(fmt, ...)   if (SRSLTE_DEBUG_ENABLED) log_h->debug(fmt, ##__VA_ARGS__)
 
+//#define Info(fmt, ...) printf(fmt, ##__VA_ARGS__)
+
 namespace srsue {
 
 int radio_recv_callback(void *obj, cf_t *data[SRSLTE_MAX_PORTS], uint32_t nsamples, srslte_timestamp_t *rx_time) {
@@ -493,11 +495,12 @@ void sync::run_thread()
               srslte_timestamp_t rx_time, tx_time;
               srslte_ue_sync_get_last_timestamp(&ue_sync, &rx_time);
               srslte_timestamp_copy(&tx_time, &rx_time);
-              if (prach_ptr) {
-                srslte_timestamp_add(&tx_time, 0, TX_DELAY * 1e-3);
-              } else {
+	      
+	      //if (prach_ptr) {
+              //  srslte_timestamp_add(&tx_time, 0, TX_DELAY * 1e-3);
+              //} else {
                 srslte_timestamp_add(&tx_time, 0, TX_DELAY * 1e-3 - time_adv_sec);
-              }
+              //}
 
               worker->set_prach(prach_ptr?&prach_ptr[prach_sf_cnt*SRSLTE_SF_LEN_PRB(cell.nof_prb)]:NULL, prach_power);
 
@@ -583,7 +586,7 @@ void sync::run_thread()
           Debug("Discarting %d samples\n", nsamples);
           srslte_timestamp_t rx_time;
           if (!radio_h->rx_now(0, dummy_buffer, nsamples, &rx_time)) {
-            log_h->console("SYNC:  Receiving from radio while in IDLE_RX\n");
+            //log_h->console("SYNC:  Receiving from radio while in IDLE_RX\n");
           }
           // If radio is in locked state returns inmidiatetly. In that case, do a 1 ms sleep
           if (rx_time.frac_secs == 0 && rx_time.full_secs == 0) {
@@ -720,13 +723,32 @@ void sync::set_agc_enable(bool enable)
   }
 }
 
+static float time_adv_sec_acc = 0;
 void sync::set_time_adv_sec(float time_adv_sec)
 {
+  // Samie
   // If transmitting earlier, transmit less samples to align time advance. If transmit later just delay next TX
+  // time_adv_sec_acc += time_adv_sec*4;
+  //time_adv_sec_acc = time_adv_sec_acc - 0.000002;
+  time_adv_sec_acc += time_adv_sec;
+  time_adv_sec_acc = time_adv_sec_acc;
+  next_offset             = (int)round((this->time_adv_sec - time_adv_sec_acc) * srslte_sampling_freq_hz(cell.nof_prb));
+  this->next_time_adv_sec = time_adv_sec_acc;
+  Info("Applying time_adv_sec=%.1f us, next_offset=%d\n", time_adv_sec_acc*1e6, next_offset);
+  printf("Applying time_adv_sec=%.1f us, next_offset=%d\n", time_adv_sec_acc*1e6, next_offset);
+}
+
+/*void sync::set_time_adv_sec(float time_adv_sec)
+{
+  // Samie
+  // If transmitting earlier, transmit less samples to align time advance. If transmit later just delay next TX
+  time_adv_sec = time_adv_sec*4.0;
+  //next_offset             = (int)round((this->time_adv_sec - time_adv_sec) * srslte_sampling_freq_hz(cell.nof_prb));
   next_offset             = (int)round((this->time_adv_sec - time_adv_sec) * srslte_sampling_freq_hz(cell.nof_prb));
   this->next_time_adv_sec = time_adv_sec;
   Info("Applying time_adv_sec=%.1f us, next_offset=%d\n", time_adv_sec*1e6, next_offset);
-}
+  printf("Applying time_adv_sec=%.1f us, next_offset=%d\n", time_adv_sec*1e6, next_offset);
+}*/
 
 float sync::get_tx_cfo()
 {
