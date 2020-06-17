@@ -367,7 +367,7 @@ int rf_soapy_open_multi(char* args, void** h, uint32_t num_requested_channels)
   handler->rx_stream_active = false;
   handler->devname = devname;
  
-  if (strstr(devname, "plutosdr")) // Added by Samie
+  if (strstr(devname, "adrvsdr")) // Added by Samie
   {
   	// Setup Rx streamer
   	size_t num_available_channels = SoapySDRDevice_getNumChannels(handler->device, SOAPY_SDR_RX);
@@ -409,7 +409,7 @@ int rf_soapy_open_multi(char* args, void** h, uint32_t num_requested_channels)
 	}
   }
 
-  if (strstr(devname, "plutosdr")) // Added by Samie
+  if (strstr(devname, "adrvsdr")) // Added by Samie
   {
   	// Setup Tx streamer
   	size_t num_available_channels = SoapySDRDevice_getNumChannels(handler->device, SOAPY_SDR_TX);
