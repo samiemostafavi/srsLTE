@@ -607,19 +607,17 @@ int rf_soapy_open_multi(char* args, void** h, uint32_t num_requested_channels)
   else if(strstr(devname,"plutosdr")) // Added by Samie
   {
 	printf("Devname: plutosdr\n");
-  	//SoapySDRDevice_setBandwidth(handler->device, SOAPY_SDR_TX, 0, 1.08e6);
-  	//SoapySDRDevice_setBandwidth(handler->device, SOAPY_SDR_RX, 0, 1.08e6);
-  	SoapySDRDevice_setBandwidth(handler->device, SOAPY_SDR_TX, 0, 4.373e6);
-  	SoapySDRDevice_setBandwidth(handler->device, SOAPY_SDR_RX, 0, 4.695e6);
+  	SoapySDRDevice_setBandwidth(handler->device, SOAPY_SDR_TX, 0, 1.614e6);
+  	SoapySDRDevice_setBandwidth(handler->device, SOAPY_SDR_RX, 0, 1.614e6);
   
 	// Samie: set RX, TX gain
 	// disable AGC
 	SoapySDRDevice_setGainMode(handler->device,SOAPY_SDR_RX, 0, 0);
 
-	double res_tx_gain = rf_soapy_set_tx_gain(handler, 89);
-  	double res_rx_gain = rf_soapy_set_rx_gain(handler, 50);
-  	//printf("plutosdr Tx gain set to %f \n",res_tx_gain);
-  	//printf("plutosdr Rx gain set to %f \n",res_rx_gain);
+	double res_tx_gain = rf_soapy_set_tx_gain(handler, 79); // [0,79] => [-89,0] db
+  	double res_rx_gain = rf_soapy_set_rx_gain(handler, 50); 
+  	printf("plutosdr Tx gain set to %f \n",res_tx_gain);
+  	printf("plutosdr Rx gain set to %f \n",res_rx_gain);
         
 	//timeNsOffset = -13000;
 	//timeNsOffset = 10000000;
@@ -637,17 +635,17 @@ int rf_soapy_open_multi(char* args, void** h, uint32_t num_requested_channels)
   else if(strstr(devname,"adrvsdr")) // Added by Samie
   {
 	printf("Devname: adrvsdr\n");
-  	SoapySDRDevice_setBandwidth(handler->device, SOAPY_SDR_TX, 0, 4.373e6);
-  	SoapySDRDevice_setBandwidth(handler->device, SOAPY_SDR_RX, 0, 4.695e6);
+  	SoapySDRDevice_setBandwidth(handler->device, SOAPY_SDR_TX, 0, 1.614e6);
+  	SoapySDRDevice_setBandwidth(handler->device, SOAPY_SDR_RX, 0, 1.614e6);
   
 	// Samie: set RX, TX gain
 	// disable AGC
 	SoapySDRDevice_setGainMode(handler->device,SOAPY_SDR_RX, 0, 0);
 
-	double res_tx_gain = rf_soapy_set_tx_gain(handler, 89);
+	double res_tx_gain = rf_soapy_set_tx_gain(handler, 79); // [0,79] => [-89,0] db
   	double res_rx_gain = rf_soapy_set_rx_gain(handler, 50);
-  	//printf("plutosdr Tx gain set to %f \n",res_tx_gain);
-  	//printf("plutosdr Rx gain set to %f \n",res_rx_gain);
+  	printf("adrvsdr Tx gain set to %f \n",res_tx_gain);
+  	printf("adrvsdr Rx gain set to %f \n",res_rx_gain);
         
 	//timeNsOffset = -13000;
 	//timeNsOffset = 10000000;
