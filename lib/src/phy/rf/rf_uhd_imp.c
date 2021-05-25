@@ -38,6 +38,15 @@
 #define UHD_SUPPORTS_COMMAND_TIME
 #endif /* UHD_VERSION < 3140000 */
 
+
+#define RX_SAMPLE_FILE 1              // enable writing samples to file
+#if RX_SAMPLE_FILE
+const unsigned long long file_bytes_size = 8ULL*1922ULL*1024ULL*8ULL;  // 1920: a frame + 1: timestamp + 1:items 1024: 1 s 8: each sample bytes 8 seconds
+char file_bytes_array[8ULL*1922ULL*1024ULL*8ULL];
+unsigned long long file_bytes_counter = 0;
+#endif
+
+
 typedef struct {
   char*                  devname;
   uhd_usrp_handle        usrp;
@@ -153,6 +162,9 @@ static void* async_thread(void* h)
 
 static inline void uhd_free(rf_uhd_handler_t* h)
 {
+
+
+
   rf_uhd_handler_t* handler = (rf_uhd_handler_t*)h;
 
   // NULL handler, return
@@ -418,6 +430,15 @@ int rf_uhd_stop_rx_stream(void* h)
   rf_uhd_handler_t* handler    = (rf_uhd_handler_t*)h;
   uhd_stream_cmd_t  stream_cmd = {.stream_mode = UHD_STREAM_MODE_STOP_CONTINUOUS, .stream_now = true};
   uhd_rx_streamer_issue_stream_cmd(handler->rx_stream, &stream_cmd);
+
+#if RX_SAMPLE_FILE
+        FILE* pFile;
+        pFile = fopen("/tmp/usrp_rxsamples.dat", "wb");
+        printf("USRP writing samples to file: /tmp/usrp_rxsamples.dat\n");
+        fwrite(file_bytes_array, 1, file_bytes_size, pFile);
+        fclose(pFile);
+#endif
+
   return 0;
 }
 
@@ -475,6 +496,7 @@ int rf_uhd_open(char* args, void** h)
 
 int rf_uhd_open_multi(char* args, void** h, uint32_t nof_channels)
 {
+  return SRSLTE_ERROR; // Samie disable UHD
   uhd_error error;
 
   if (h) {
@@ -1049,6 +1071,20 @@ int rf_uhd_recv_with_time_multi(void*    h,
   if (secs && frac_secs) {
     uhd_rx_metadata_time_spec(handler->rx_md_first, secs, frac_secs);
   }
+
+#if RX_SAMPLE_FILE
+        if(file_bytes_counter+((int)rxd_samples_total+2)*8 > file_bytes_size)
+                file_bytes_counter = 0;
+
+	uint64_t timeNs = 0;
+	uint64_t uint64_items = rxd_samples_total;
+        memcpy(&file_bytes_array[file_bytes_counter], &timeNs, 8);              //timestamp uint64_t
+        memcpy(&file_bytes_array[file_bytes_counter+8], &uint64_items, 8);      //number of items uint64_t
+        memcpy(&file_bytes_array[file_bytes_counter+16], data[0], (int) uint64_items*8);    //samples: each item is 2 32 bits float
+        file_bytes_counter+=((int)uint64_items+2)*8;
+#endif
+
+
   return rxd_samples_total;
 }
 

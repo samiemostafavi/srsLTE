@@ -27,6 +27,7 @@
 #include "rf_helper.h"
 #include "rf_soapy_imp.h"
 #include "srslte/srslte.h"
+#include "srslte/phy/io/filesink.h"
 
 #include <SoapySDR/Device.h>
 #include <SoapySDR/Formats.h>
@@ -35,7 +36,7 @@
 #include <SoapySDR/Version.h>
 #include <Types.h>
 
-#define HAVE_ASYNC_THREAD 0
+#define HAVE_ASYNC_THREAD 1
 
 #define STOP_STREAM_BEFORE_RATE_CHANGE 0
 #define USE_TX_MTU 0
@@ -43,6 +44,14 @@
 
 #define PRINT_RX_STATS 0
 #define PRINT_TX_STATS 0
+
+#define FILE_SINK 0
+
+#if FILE_SINK
+	srslte_filesink_t sink;
+	int file_num = 0;
+	char* output_file_name;
+#endif
 
 typedef struct {
   char*            devname;
@@ -72,6 +81,7 @@ typedef struct {
   uint32_t num_other_errors;
   uint32_t num_stream_curruption;
 } rf_soapy_handler_t;
+
 
 cf_t zero_mem[64 * 1024];
 
@@ -125,7 +135,7 @@ static void* async_thread(void* h)
     long long  timeNs;
 
     ret = SoapySDRDevice_readStreamStatus(handler->device, handler->txStream, &chanMask, &flags, &timeNs, timeoutUs);
-    if (ret == SOAPY_SDR_TIME_ERROR) {
+    /*if (ret == SOAPY_SDR_TIME_ERROR) {
       // this is a late
       log_late(handler, false);
     } else if (ret == SOAPY_SDR_UNDERFLOW) {
@@ -146,7 +156,7 @@ static void* async_thread(void* h)
             chanMask,
             timeNs);
       handler->async_thread_running = false;
-    }
+    }*/
   }
   return NULL;
 }
@@ -218,6 +228,15 @@ int rf_soapy_start_rx_stream(void* h, bool now)
       return SRSLTE_ERROR;
     }
 
+#if FILE_SINK
+    output_file_name = (char*)malloc( sizeof(char) * ( 25 + 1 ) );
+    strcpy(output_file_name,"/tmp/srslte_rx_sink_N.dat");
+    char c = (char)file_num + (char)'0';
+    output_file_name[20] = c;
+    srslte_filesink_init(&sink, output_file_name, SRSLTE_COMPLEX_FLOAT_BIN);
+    file_num++;
+#endif
+
     handler->rx_stream_active = true;
   }
   return SRSLTE_SUCCESS;
@@ -243,6 +262,10 @@ int rf_soapy_stop_rx_stream(void* h)
     printf("Error deactivating Rx streaming.\n");
     return SRSLTE_ERROR;
   }
+
+#if FILE_SINK
+  srslte_filesink_free(&sink);
+#endif
 
   handler->rx_stream_active = false;
   return SRSLTE_SUCCESS;
@@ -282,6 +305,7 @@ float rf_soapy_get_rssi(void* h)
   printf("TODO: implement rf_soapy_get_rssi()\n");
   return 0.0;
 }
+
 
 int rf_soapy_open_multi(char* args, void** h, uint32_t num_requested_channels)
 {
@@ -378,6 +402,8 @@ int rf_soapy_open_multi(char* args, void** h, uint32_t num_requested_channels)
     }
     handler->rx_mtu = SoapySDRDevice_getStreamMTU(handler->device, handler->rxStream);
   }
+
+
 
   // Setup Tx streamer
   num_available_channels = SoapySDRDevice_getNumChannels(handler->device, SOAPY_SDR_TX);
@@ -599,6 +625,8 @@ int rf_soapy_close(void* h)
 
   free(handler);
 
+
+
   return SRSLTE_SUCCESS;
 }
 
@@ -795,6 +823,7 @@ int rf_soapy_recv_with_time_multi(void*    h,
   long long timeNs; // timestamp for receive buffer
   int       n = 0;
 
+
 #if PRINT_RX_STATS
   printf("rx: nsamples=%d rx_mtu=%zd\n", nsamples, handler->rx_mtu);
 #endif
@@ -829,7 +858,7 @@ int rf_soapy_recv_with_time_multi(void*    h,
     if (secs != NULL && frac_secs != NULL && n == 0) {
       *secs      = floor(timeNs / 1e9);
       *frac_secs = (timeNs % 1000000000) / 1e9;
-      // printf("rx_time: secs=%lld, frac_secs=%lf timeNs=%llu\n", *secs, *frac_secs, timeNs);
+      //printf("rx_time: secs=%ld, frac_secs=%lf timeNs=%llu\n", *secs, *frac_secs, timeNs);
     }
 
 #if PRINT_RX_STATS
@@ -839,6 +868,11 @@ int rf_soapy_recv_with_time_multi(void*    h,
     n += ret;
     trials++;
   } while (n < nsamples && trials < 100);
+
+#if FILE_SINK
+    srslte_filesink_write_multi(&sink, (void**)data, nsamples, 1);
+#endif
+
 
   return n;
 }
@@ -863,6 +897,11 @@ int rf_soapy_send_timed(void*  h,
       h, _data, nsamples, secs, frac_secs, has_time_spec, blocking, is_start_of_burst, is_end_of_burst);
 }
 
+double prev_ts = 0;
+int prev_size = 0;
+bool print_next = false;
+unsigned long prev_time = 0;
+
 // Todo: Check correct handling of flags, use RF metrics API, fix timed transmissions
 int rf_soapy_send_timed_multi(void*  h,
                               void*  data[SRSLTE_MAX_PORTS],
@@ -881,6 +920,24 @@ int rf_soapy_send_timed_multi(void*  h,
   int                 trials    = 0;
   int                 ret       = 0;
   int                 n         = 0;
+
+  // Uncomment this to see exactly how srslte transmits frames
+  /*struct timeval tv;
+  gettimeofday(&tv,NULL);
+  unsigned long time_in_micros = 1000000 * tv.tv_sec + tv.tv_usec;
+  if((nsamples != 1920) || print_next)
+  {
+    printf("rx: nsamples=%d timens=%f, curr_time_us:%lu, prev_nsamples=%d, prev_timens=%f, prev_time_us=%lu\n", nsamples, frac_secs, time_in_micros, prev_size ,prev_ts, prev_time);
+
+    if(nsamples != 1920)
+	    print_next = true;
+    else
+	    print_next = false;
+  }
+
+  prev_ts = frac_secs;
+  prev_size = nsamples;
+  prev_time = time_in_micros;*/
 
 #if PRINT_TX_STATS
   printf("tx: namples=%d, mtu=%zd\n", nsamples, handler->tx_mtu);

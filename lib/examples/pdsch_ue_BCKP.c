@@ -467,6 +467,9 @@ uint32_t pkt_errors = 0, pkt_total = 0, nof_detected = 0, pmch_pkt_errors = 0, p
 srslte_netsink_t net_sink, net_sink_signal;
 /* Useful macros for printing lines which will disappear */
 
+#define PRINT_LINE_INIT()                                                                                              \
+  int        this_nof_lines = 0;                                                                                       \
+  static int prev_nof_lines = 0
 #define PRINT_LINE(_fmt, ...)                                                                                          \
   printf("\033[K" _fmt "\n", ##__VA_ARGS__);                                                                           \
   this_nof_lines++
@@ -764,13 +767,23 @@ int main(int argc, char** argv)
 
   INFO("\nEntering main loop...\n\n");
 
+  // Variables for measurements
+  uint32_t nframes = 0;
+  float    rsrp0 = 0.0, rsrp1 = 0.0, rsrq = 0.0, snr = 0.0, enodebrate = 0.0, uerate = 0.0, procrate = 0.0,
+        sinr[SRSLTE_MAX_LAYERS][SRSLTE_MAX_CODEBOOKS];
+  bool decode_pdsch = false;
+
+  for (int i = 0; i < SRSLTE_MAX_LAYERS; i++) {
+    srslte_vec_f_zero(sinr[i], SRSLTE_MAX_CODEBOOKS);
+  }
+
   /* Main loop */
   uint64_t sf_cnt          = 0;
   uint32_t sfn             = 0;
-  uint32_t tti 		   = 0;
-  bool force_camping_sfn_sync = true;
+  uint32_t last_decoded_tm = 0;
   while (!go_exit && (sf_cnt < prog_args.nof_subframes || prog_args.nof_subframes == -1)) {
     char input[128];
+    PRINT_LINE_INIT();
 
     fd_set set;
     FD_ZERO(&set);
@@ -811,19 +824,14 @@ int main(int argc, char** argv)
 
     /* srslte_ue_sync_get_buffer returns 1 if successfully read 1 aligned subframe */
     if (ret == 1) {
-      
+
+      bool           acks[SRSLTE_MAX_CODEWORDS] = {false};
+      struct timeval t[3];
+
       uint32_t sf_idx = srslte_ue_sync_get_sfidx(&ue_sync);
 
-      // Check tti is synched with ue_sync
-      if (sf_idx != (tti+1) % 10) 
-      {
-           printf("Our sf_idx: %d is not synched with ue_sync result: %d\n",tti%10,sf_idx);
-           // Force SFN decode, just in case it is in the wrong frame
-           force_camping_sfn_sync = true;
-      }
-
-      // Force decode MIB if required
-      if (force_camping_sfn_sync) {
+      switch (state) {
+        case DECODE_MIB:
           if (sf_idx == 0) {
             uint8_t bch_payload[SRSLTE_BCH_PAYLOAD_LEN];
             int     sfn_offset;
@@ -836,45 +844,244 @@ int main(int argc, char** argv)
               srslte_cell_fprint(stdout, &cell, sfn);
               printf("Decoded MIB. SFN: %d, offset: %d\n", sfn, sfn_offset);
               sfn   = (sfn + sfn_offset) % 1024;
-              
-              // Disable MIB decoding
-              force_camping_sfn_sync = false;
-              
-	      printf("MIB decoded, SFN resynchronized successfully\n"); // Samie
+              // state = DECODE_PDSCH; Samie
+              state = DECODE_MIB;
             }
-	    else
-                  printf("SFN not yet synchronized, MIB not found at sf_idx==0\n"); // Samie
-
           }
-	  else
-	  {
-                  printf("SFN not yet synchronized, waiting for sf_idx==0, sf_idx==%d\n",sf_idx); // Samie
-	  }
+          break;
+        case DECODE_PDSCH:
+
+          if (prog_args.rnti != SRSLTE_SIRNTI) {
+            decode_pdsch = true;
+            if (srslte_sfidx_tdd_type(dl_sf.tdd_config, sf_idx) == SRSLTE_TDD_SF_U) {
+              decode_pdsch = false;
+            }
+          } else {
+            /* We are looking for SIB1 Blocks, search only in appropiate places */
+            if ((sf_idx == 5 && (sfn % 2) == 0) || mch_table[sf_idx] == 1) {
+              decode_pdsch = true;
+            } else {
+              decode_pdsch = false;
+            }
+          }
+
+          uint32_t tti = sfn * 10 + sf_idx;
+
+          gettimeofday(&t[1], NULL);
+          if (decode_pdsch) {
+            srslte_sf_t sf_type;
+            if (mch_table[sf_idx] == 0 || prog_args.mbsfn_area_id < 0) { // Not an MBSFN subframe
+              sf_type = SRSLTE_SF_NORM;
+
+              // Set PDSCH channel estimation
+              ue_dl_cfg.chest_cfg = chest_pdsch_cfg;
+            } else {
+              sf_type = SRSLTE_SF_MBSFN;
+
+              // Set MBSFN channel estimation
+              ue_dl_cfg.chest_cfg = chest_mbsfn_cfg;
+            }
+
+            n = 0;
+            for (uint32_t tm = 0; tm < 4 && !n; tm++) {
+              dl_sf.tti                             = tti;
+              dl_sf.sf_type                         = sf_type;
+              ue_dl_cfg.cfg.tm                      = (srslte_tm_t)tm;
+              ue_dl_cfg.cfg.pdsch.use_tbs_index_alt = prog_args.enable_256qam;
+
+              if ((ue_dl_cfg.cfg.tm == SRSLTE_TM1 && cell.nof_ports == 1) ||
+                  (ue_dl_cfg.cfg.tm > SRSLTE_TM1 && cell.nof_ports > 1)) {
+                n = srslte_ue_dl_find_and_decode(&ue_dl, &dl_sf, &ue_dl_cfg, &pdsch_cfg, data, acks);
+                if (n > 0) {
+                  nof_detected++;
+                  last_decoded_tm = tm;
+                  for (uint32_t tb = 0; tb < SRSLTE_MAX_CODEWORDS; tb++) {
+                    if (pdsch_cfg.grant.tb[tb].enabled) {
+                      if (!acks[tb]) {
+                        if (sf_type == SRSLTE_SF_NORM) {
+                          pkt_errors++;
+                        } else {
+                          pmch_pkt_errors++;
+                        }
+                      }
+                      if (sf_type == SRSLTE_SF_NORM) {
+                        pkt_total++;
+                      } else {
+                        pmch_pkt_total++;
+                      }
+                    }
+                  }
+                }
+              }
+            }
+            // Feed-back ue_sync with chest_dl CFO estimation
+            if (sf_idx == 5 && prog_args.enable_cfo_ref) {
+              srslte_ue_sync_set_cfo_ref(&ue_sync, ue_dl.chest_res.cfo);
+            }
+
+            gettimeofday(&t[2], NULL);
+            get_time_interval(t);
+
+            if (n > 0) {
+
+              /* Send data if socket active */
+              if (prog_args.net_port > 0) {
+                if (sf_idx == 1) {
+                  srslte_netsink_write(&net_sink, data[0], 1 + (n - 1) / 8);
+                } else {
+                  // TODO: UDP Data transmission does not work
+                  for (uint32_t tb = 0; tb < SRSLTE_MAX_CODEWORDS; tb++) {
+                    if (pdsch_cfg.grant.tb[tb].enabled) {
+                      srslte_netsink_write(&net_sink, data[tb], 1 + (pdsch_cfg.grant.tb[tb].tbs - 1) / 8);
+                    }
+                  }
+                }
+              }
+#ifdef PRINT_CHANGE_SCHEDULING
+              if (pdsch_cfg.dci.cw[0].mcs_idx != old_dl_dci.cw[0].mcs_idx ||
+                  memcmp(&pdsch_cfg.dci.type0_alloc, &old_dl_dci.type0_alloc, sizeof(srslte_ra_type0_t)) ||
+                  memcmp(&pdsch_cfg.dci.type1_alloc, &old_dl_dci.type1_alloc, sizeof(srslte_ra_type1_t)) ||
+                  memcmp(&pdsch_cfg.dci.type2_alloc, &old_dl_dci.type2_alloc, sizeof(srslte_ra_type2_t))) {
+                old_dl_dci = pdsch_cfg.dci;
+                fflush(stdout);
+                printf("DCI %s\n", srslte_dci_format_string(pdsch_cfg.dci.dci_format));
+                srslte_ra_pdsch_fprint(stdout, &old_dl_dci, cell.nof_prb);
+              }
+#endif
+            }
+
+            nof_trials++;
+
+            uint32_t enb_bits = ((pdsch_cfg.grant.tb[0].enabled ? pdsch_cfg.grant.tb[0].tbs : 0) +
+                                 (pdsch_cfg.grant.tb[1].enabled ? pdsch_cfg.grant.tb[1].tbs : 0));
+            uint32_t ue_bits  = ((acks[0] ? pdsch_cfg.grant.tb[0].tbs : 0) + (acks[1] ? pdsch_cfg.grant.tb[1].tbs : 0));
+            rsrq              = SRSLTE_VEC_EMA(ue_dl.chest_res.rsrp_dbm, rsrq, 0.1f);
+            rsrp0             = SRSLTE_VEC_EMA(ue_dl.chest_res.rsrp_port_dbm[0], rsrp0, 0.05f);
+            rsrp1             = SRSLTE_VEC_EMA(ue_dl.chest_res.rsrp_port_dbm[1], rsrp1, 0.05f);
+            snr               = SRSLTE_VEC_EMA(ue_dl.chest_res.snr_db, snr, 0.05f);
+            enodebrate        = SRSLTE_VEC_EMA(enb_bits / 1000.0f, enodebrate, 0.05f);
+            uerate            = SRSLTE_VEC_EMA(ue_bits / 1000.0f, uerate, 0.001f);
+            float elapsed     = (float)t[0].tv_usec + t[0].tv_sec * 1.0e+6f;
+            if (elapsed != 0.0f) {
+              procrate = SRSLTE_VEC_EMA(ue_bits / elapsed, procrate, 0.01f);
+            }
+
+            nframes++;
+            if (isnan(rsrq)) {
+              rsrq = 0;
+            }
+            if (isnan(snr)) {
+              snr = 0;
+            }
+            if (isnan(rsrp0)) {
+              rsrp0 = 0;
+            }
+            if (isnan(rsrp1)) {
+              rsrp1 = 0;
+            }
+          }
+
+          // Plot and Printf
+          if (sf_idx == 5) {
+            float gain = prog_args.rf_gain;
+            if (gain < 0) {
+              gain = srslte_convert_power_to_dB(srslte_agc_get_gain(&ue_sync.agc));
+            }
+
+            /* Print transmission scheme */
+
+            /* Print basic Parameters */
+            PRINT_LINE("          CFO: %+7.2f Hz", srslte_ue_sync_get_cfo(&ue_sync));
+            PRINT_LINE("         RSRP: %+5.1f dBm | %+5.1f dBm", rsrp0, rsrp1);
+            PRINT_LINE("          SNR: %+5.1f dB", snr);
+            PRINT_LINE("           TM: %d", last_decoded_tm + 1);
+            PRINT_LINE(
+                "           Rb: %6.2f / %6.2f / %6.2f Mbps (net/maximum/processing)", uerate, enodebrate, procrate);
+            PRINT_LINE("   PDCCH-Miss: %5.2f%%", 100 * (1 - (float)nof_detected / nof_trials));
+            PRINT_LINE("   PDSCH-BLER: %5.2f%%", (float)100 * pkt_errors / pkt_total);
+
+#ifdef WRITE_FILE_METRICS
+	    add_metrics(metrics,srslte_ue_sync_get_cfo(&ue_sync),rsrp0,snr,procrate,100 * (1 - (float)nof_detected / nof_trials),(float)100 * pkt_errors / pkt_total);
+#endif
+
+            if (prog_args.mbsfn_area_id > -1) {
+              PRINT_LINE("   PMCH-BLER: %5.2f%%", (float)100 * pkt_errors / pmch_pkt_total);
+            }
+
+            PRINT_LINE("         TB 0: mcs=%d; tbs=%d", pdsch_cfg.grant.tb[0].mcs_idx, pdsch_cfg.grant.tb[0].tbs);
+            PRINT_LINE("         TB 1: mcs=%d; tbs=%d", pdsch_cfg.grant.tb[1].mcs_idx, pdsch_cfg.grant.tb[1].tbs);
+
+            /* MIMO: if tx and rx antennas are bigger than 1 */
+            if (cell.nof_ports > 1 && ue_dl.pdsch.nof_rx_antennas > 1) {
+              uint32_t ri = 0;
+              float    cn = 0;
+              /* Compute condition number */
+              if (srslte_ue_dl_select_ri(&ue_dl, &ri, &cn)) {
+                /* Condition number calculation is not supported for the number of tx & rx antennas*/
+                PRINT_LINE("            κ: NA");
+              } else {
+                /* Print condition number */
+                PRINT_LINE("            κ: %.1f dB, RI=%d (Condition number, 0 dB => Best)", cn, ri);
+              }
+              PRINT_LINE("");
+            }
+            PRINT_LINE("Press enter maximum printing debug log of 1 subframe.");
+            PRINT_LINE("");
+            PRINT_LINE_RESET_CURSOR();
+          }
+          break;
       }
-
-      // Update tti
-      tti = sfn * 10 + sf_idx;
-
-      if (sf_idx == 9) 
-      {
+      if (sf_idx == 9) {
         sfn++;
         if (sfn == 1024) {
           sfn = 0;
+          PRINT_LINE_ADVANCE_CURSOR();
+          pkt_errors      = 0;
+          pkt_total       = 0;
+          pmch_pkt_errors = 0;
+          pmch_pkt_total  = 0;
         }
       }
 
-    } 
-    else if (ret == 0) //sync_zero_copy returned 0 
-    {
-      	 printf("Out-of-sync detected in PSS/SSS. Finding PSS... Peak: %8.1f, FrameCnt: %d, State: %d\n",
+#ifdef ENABLE_GUI
+      if (!prog_args.disable_plots) {
+        if ((sfn % 3) == 0 && decode_pdsch) {
+          plot_sf_idx = sf_idx;
+          plot_track  = true;
+          sem_post(&plot_sem);
+        }
+      }
+#endif /* ENABLE_GUI */
+    } else if (ret == 0) {
+      printf("Finding PSS... Peak: %8.1f, FrameCnt: %d, State: %d\r",
              srslte_sync_get_peak_value(&ue_sync.sfind),
              ue_sync.frame_total_cnt,
              ue_sync.state);
+
+#ifdef WRITE_FILE_METRICS
+	    add_metrics(metrics,0,0,0,0,0,0);
+#endif
+
+#ifdef ENABLE_GUI
+      if (!prog_args.disable_plots) {
+        plot_sf_idx = srslte_ue_sync_get_sfidx(&ue_sync);
+        plot_track  = false;
+        sem_post(&plot_sem);
+      }
+#endif /* ENABLE_GUI */
     }
 
     sf_cnt++;
   } // Main loop
 
+#ifdef ENABLE_GUI
+  if (!prog_args.disable_plots) {
+    if (!pthread_kill(plot_thread, 0)) {
+      pthread_kill(plot_thread, SIGHUP);
+      pthread_join(plot_thread, NULL);
+    }
+  }
+#endif
   srslte_ue_dl_free(&ue_dl);
   srslte_ue_sync_free(&ue_sync);
   for (int i = 0; i < SRSLTE_MAX_CODEWORDS; i++) {

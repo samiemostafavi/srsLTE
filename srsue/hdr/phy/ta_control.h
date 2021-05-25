@@ -106,8 +106,9 @@ public:
 
     // Log information information if available
     if (log_h) {
-      log_h->info(
-          "PHY:   Set TA RAR: ta_cmd: %d, n_ta: %d, ta_usec: %.1f\n", ta_cmd, next_base_nta, next_base_sec * 1e6f);
+      log_h->info("PHY:   Set TA RAR: ta_cmd: %d, n_ta: %d, ta_usec: %.1f\n", ta_cmd, next_base_nta, next_base_sec * 1e6f);
+
+      printf("PHY:   Set TA RAR: ta_cmd: %d, n_ta: %d, ta_usec: %.1f\n", ta_cmd, next_base_nta, next_base_sec * 1e6f); // SAMIE
     }
   }
 
@@ -129,6 +130,8 @@ public:
     // Log information information if available
     if (log_h) {
       log_h->info("PHY:   Set TA: ta_cmd: %d, n_ta: %d, ta_usec: %.1f\n", ta_cmd, next_base_nta, next_base_sec * 1e6f);
+      
+      printf("PHY:   Set TA RAR: ta_cmd: %d, n_ta: %d, ta_usec: %.1f\n", ta_cmd, next_base_nta, next_base_sec * 1e6f); // SAMIE
     }
   }
 

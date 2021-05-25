@@ -26,6 +26,10 @@
 #include "srsue/hdr/phy/sf_worker.h"
 #include <algorithm>
 #include <unistd.h>
+#include <vector>
+#include <string>
+
+using namespace std;
 
 #define Error(fmt, ...)                                                                                                \
   if (SRSLTE_DEBUG_ENABLED)                                                                                            \
@@ -41,6 +45,48 @@
   log_h->debug(fmt, ##__VA_ARGS__)
 
 namespace srsue {
+
+// Samie
+int file_num = 0;
+vector<double> sfos;
+vector<double> cfos;
+vector<double> tausecs;
+vector<double> rsrps;
+vector<double> snrs;
+void record_sync_metrics(double sfo,double cfo, double ta_usec, double rsrp, double snr)
+{
+	sfos.push_back(sfo);
+	cfos.push_back(cfo);
+	tausecs.push_back(ta_usec);
+	rsrps.push_back(rsrp);
+	snrs.push_back(snr);
+}
+// Samie
+void finish_metrics()
+{
+        //print stuff to txt file
+	string file_name = string("/tmp/sync_ue_metrics_") + to_string(file_num) + string(".txt");
+	printf("SYNC writing samples to %s \n",file_name.c_str());
+        
+	FILE *fpOut;
+        fpOut = fopen(file_name.c_str(), "w");
+        
+	fprintf(fpOut, "sfo cfo ta_usec rsrp snr\n");
+
+        for(unsigned int i=0; i<sfos.size(); i++)
+        {
+            fprintf(fpOut, "%f", sfos[i]);
+            fprintf(fpOut, " %f", cfos[i]);
+            fprintf(fpOut, " %f", tausecs[i]);
+            fprintf(fpOut, " %f", rsrps[i]);
+            fprintf(fpOut, " %f", snrs[i]);
+            fprintf(fpOut, "\n");
+        }
+        fclose(fpOut);
+
+	file_num++;
+}
+
 
 static int
 radio_recv_callback(void* obj, cf_t* data[SRSLTE_MAX_CHANNELS], uint32_t nsamples, srslte_timestamp_t* rx_time)
@@ -124,6 +170,7 @@ sync::~sync()
 
 void sync::stop()
 {
+  finish_metrics(); // Samie
   worker_com->semaphore.wait_all();
   for (auto& q : intra_freq_meas) {
     q->stop();
@@ -349,6 +396,7 @@ bool sync::cell_is_camping()
  *
  */
 
+
 void sync::run_thread()
 {
   sf_worker*    worker    = nullptr;
@@ -431,8 +479,12 @@ void sync::run_thread()
 
               // Check tti is synched with ue_sync
               if (srslte_ue_sync_get_sfidx(&ue_sync) != tti % 10) {
-                uint32_t sfn = tti / 10;
+		
+		printf("tti mod 10 = %d is not synched with ue_sync: %d\n",tti%10,srslte_ue_sync_get_sfidx(&ue_sync)); // Samie Everything starts here
+                
+		uint32_t sfn = tti / 10;
                 tti          = (sfn * 10 + srslte_ue_sync_get_sfidx(&ue_sync)) % 10240;
+
 
                 // Force SFN decode, just in case it is in the wrong frame
                 force_camping_sfn_sync = true;
@@ -442,6 +494,7 @@ void sync::run_thread()
                 force_camping_sfn_sync = true;
                 is_overflow            = false;
                 log_h->info("Detected overflow, trying to resync SFN\n");
+                printf("Detected overflow, trying to resync SFN\n");
               }
 
               // Force decode MIB if required
@@ -463,9 +516,11 @@ void sync::run_thread()
                                    "reselection to cells with different MIB is not supported\n");
                   } else {
                     log_h->info("SFN resynchronized successfully\n");
+                    printf("SFN resynchronized successfully\n"); // Samie
                   }
                 } else {
                   log_h->warning("SFN not yet synchronized, sending out-of-sync\n");
+                  printf("SFN not yet synchronized, sending out-of-sync\n"); // Samie
                 }
               }
 
@@ -474,6 +529,10 @@ void sync::run_thread()
               metrics.sfo   = srslte_ue_sync_get_sfo(&ue_sync);
               metrics.cfo   = srslte_ue_sync_get_cfo(&ue_sync);
               metrics.ta_us = worker_com->ta.get_usec();
+	      
+	      // Samie
+	      record_sync_metrics(metrics.sfo,metrics.cfo,metrics.ta_us,worker_com->avg_rsrp_dbm[0],worker_com->avg_snr_db_cqi[0]);
+
               for (uint32_t i = 0; i < worker_com->args->nof_carriers; i++) {
                 worker_com->set_sync_metrics(i, metrics);
               }
@@ -520,7 +579,12 @@ void sync::run_thread()
               break;
             case 0:
               Warning("SYNC:  Out-of-sync detected in PSS/SSS\n");
-              out_of_sync();
+              printf("SYNC:  Out-of-sync detected in PSS/SSS\n"); // Samie
+	      
+	      // Samie
+	      record_sync_metrics(metrics.sfo,metrics.cfo,metrics.ta_us,worker_com->avg_rsrp_dbm[0],worker_com->avg_snr_db_cqi[0]);
+              
+	      out_of_sync();
               worker->release();
 
               // Force decoding MIB, for making sure that the TTI will be right
@@ -629,7 +693,7 @@ void sync::set_agc_enable(bool enable)
       ERROR("Error setting AGC: PHY not initiated\n");
     }
   } else {
-    ERROR("Error stopping AGC: not implemented\n");
+    //ERROR("Error stopping AGC: not implemented\n"); Samie
   }
 }
 
@@ -790,10 +854,11 @@ void sync::set_sampling_rate()
   if (current_srate != new_srate || srate_mode != SRATE_CAMP) {
     current_srate = new_srate;
     Info("SYNC:  Setting sampling rate %.2f MHz\n", current_srate / 1000000);
-
     srate_mode = SRATE_CAMP;
     radio_h->set_rx_srate(current_srate);
+    printf("Set sampling rate rx done\n");
     radio_h->set_tx_srate(current_srate);
+    printf("Set sampling rate tx done\n");
   } else {
     Error("Error setting sampling rate for cell with %d PRBs\n", cell.nof_prb);
   }
@@ -1158,6 +1223,7 @@ sync::sfn_sync::ret_code sync::sfn_sync::decode_mib(srslte_cell_t*              
           }
 
           Info("SYNC:  DONE, SNR=%.1f dB, TTI=%d, sfn_offset=%d\n", ue_mib.chest_res.snr_db, *tti_cnt, sfn_offset);
+          printf("SYNC:  DONE, SNR=%.1f dB, TTI=%d, sfn_offset=%d\n", ue_mib.chest_res.snr_db, *tti_cnt, sfn_offset); // Samie
         }
 
         reset();
