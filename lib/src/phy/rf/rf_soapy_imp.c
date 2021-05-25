@@ -76,7 +76,9 @@ typedef struct {
 
 
 cf_t zero_mem[64*1024];
-long int timeNsOffset = 0; // schiessl
+long int timeNsOffset = 0; // Samie
+//long int timeNsOffsetSync = 0; // Samie
+//bool timeNsOffsetFixed = false;
 //FILE *fileOutputDebug; // samie
 
 static void log_overflow(rf_soapy_handler_t *h) {
@@ -628,6 +630,7 @@ int rf_soapy_open_multi(char* args, void** h, uint32_t num_requested_channels)
 	//timeNsOffset = 90000000;
 	// Best -100000 in order
 	//timeNsOffset = -100000; // Best OAI
+	timeNsOffset = 0;
 	
 	//rf_soapy_calibrate_rx(handler);
 	//rf_soapy_calibrate_tx(handler);
@@ -659,6 +662,7 @@ int rf_soapy_open_multi(char* args, void** h, uint32_t num_requested_channels)
 	// timeNsOffset = -13000;
 	//timeNsOffset = -1000000000;
 	//timeNsOffset = -100000; // Best OAI
+	timeNsOffset = 0;
 	
 	//rf_soapy_calibrate_rx(handler);
 	//rf_soapy_calibrate_tx(handler);
@@ -1083,7 +1087,7 @@ int rf_soapy_send_timed_multi(void*  h,
     timeNs = timeNs + (frac_secs * 1000000000);
   }
 
-  timeNs = timeNs+timeNsOffset; // schiessl: necessary offset for USRP B210 through SoapyUHD driver
+  timeNs = timeNs+timeNsOffset;//+timeNsOffsetSync; // Samie
 
   //printf("nsamples: %d \n",nsamples);
 

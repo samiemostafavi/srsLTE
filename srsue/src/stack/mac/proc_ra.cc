@@ -427,6 +427,9 @@ void ra_proc::tb_decoded_ok() {
             rar_pdu_msg.get()->get_ta_cmd(),
             rar_pdu_msg.get()->get_temp_crnti());
 
+      // Samie Sync
+      //timeNsOffsetFixed = true;
+
       if (preambleIndex > 0) {
         // Preamble selected by Network
         complete();

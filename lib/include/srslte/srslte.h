@@ -121,6 +121,11 @@ extern "C" {
 #include "srslte/phy/sync/cfo.h"
 #include "srslte/phy/sync/cp.h"
 
+//Samie
+//extern long int timeNsOffset;
+//extern long int timeNsOffsetSync;
+//extern bool timeNsOffsetFixed;
+
 #ifdef __cplusplus
 }
 #undef I // Fix complex.h #define I nastiness when using C++

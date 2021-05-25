@@ -378,7 +378,7 @@ void ul_harq_entity::ul_harq_process::generate_new_tx(mac_interface_phy_lte::mac
   current_irv               = 0;
 
   Info("UL %d:  New TX%s, RV=%d, TBS=%d\n", pid, grant_is_rar() ? " for Msg3" : "", get_rv(), cur_grant.tb.tbs);
-  printf("UL %d:  New TX%s, RV=%d, TBS=%d\n", pid, grant_is_rar() ? " for Msg3" : "", get_rv(), cur_grant.tb.tbs);
+  //printf("UL %d:  New TX%s, RV=%d, TBS=%d\n", pid, grant_is_rar() ? " for Msg3" : "", get_rv(), cur_grant.tb.tbs);
   generate_tx(action);
 }
 

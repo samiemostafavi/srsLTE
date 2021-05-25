@@ -209,6 +209,9 @@ phy_interface_mac_lte::prach_info_t prach::get_info()
   return info;
 }
 
+
+//static int prach_num = 0;
+
 cf_t* prach::generate(float cfo, uint32_t* nof_sf, float* target_power)
 {
 
@@ -242,13 +245,24 @@ cf_t* prach::generate(float cfo, uint32_t* nof_sf, float* target_power)
     if (target_power) {
       *target_power = target_power_dbm;
     }
+   
+    // Samie
+    /*if(!timeNsOffsetFixed)
+    {
+    	timeNsOffset = -10000*prach_num;
+    	prach_num++;
+    }*/
 
+    // Samie modified
     Info("PRACH: Transmitted preamble=%d, tti_tx=%d, CFO=%.2f KHz, nof_sf=%d, target_power=%.1f dBm\n",
          preamble_idx,
          transmitted_tti,
          cfo * 15,
          nsf,
          target_power_dbm);
+	 //prach_num-1,
+	 //timeNsOffset);
+
     preamble_idx = -1;
 
     return signal_buffer;

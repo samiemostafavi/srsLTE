@@ -40,7 +40,7 @@ bool config_exists(std::string &filename, std::string default_name)
     if (!homedir) {
       homedir = ".";
     }
-    snprintf(full_path, sizeof(full_path), "%s/.config/srslte/%s", homedir, default_name.c_str());
+    snprintf(full_path, sizeof(full_path), "%s/.config/srslte_rel_old/%s", homedir, default_name.c_str());
     filename = std::string(full_path);
 
     // try to open again

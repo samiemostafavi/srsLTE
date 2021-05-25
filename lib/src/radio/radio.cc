@@ -382,7 +382,7 @@ void radio::set_tx_srate(double srate)
       double srate_khz = round(cur_tx_srate/1e3);
       if (srate_khz == 1.92e3) {
         // 6 PRB
-        nsamples = 57;
+        nsamples = 0;
       } else if (srate_khz == 3.84e3) {
         // 15 PRB
         nsamples = 60;
@@ -412,7 +412,7 @@ void radio::set_tx_srate(double srate)
       double srate_khz = round(cur_tx_srate/1e3);
       if (srate_khz == 1.92e3) {
         // 6 PRB
-        nsamples = 57;
+        nsamples = 0;
       } else if (srate_khz == 3.84e3) {
         // 15 PRB
         nsamples = 60;

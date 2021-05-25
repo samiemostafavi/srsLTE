@@ -723,32 +723,39 @@ void sync::set_agc_enable(bool enable)
   }
 }
 
-static float time_adv_sec_acc = 0;
+/*static float time_adv_sec_acc = 0;
 void sync::set_time_adv_sec(float time_adv_sec)
 {
+  //double time_adv_ns = time_adv_sec*1e9;
+  //timeNsOffsetSync += (-time_adv_ns) +1000;
+  //printf("Applying time_adv_sec=%.1f us, timeNsOffset=%ld, timeNsOffsetSync=%ld\n", time_adv_sec_acc*1e6, timeNsOffset,timeNsOffsetSync);
   // Samie
   // If transmitting earlier, transmit less samples to align time advance. If transmit later just delay next TX
   // time_adv_sec_acc += time_adv_sec*4;
-  //time_adv_sec_acc = time_adv_sec_acc - 0.000002;
+  // time_adv_sec_acc = time_adv_sec_acc - 0.000002;
   time_adv_sec_acc += time_adv_sec;
-  time_adv_sec_acc = time_adv_sec_acc;
+  time_adv_sec_acc = time_adv_sec_acc - 0.0000005;
+  if(time_adv_sec_acc < 0)
+	  time_adv_sec_acc = 0;
+
   next_offset             = (int)round((this->time_adv_sec - time_adv_sec_acc) * srslte_sampling_freq_hz(cell.nof_prb));
   this->next_time_adv_sec = time_adv_sec_acc;
   Info("Applying time_adv_sec=%.1f us, next_offset=%d\n", time_adv_sec_acc*1e6, next_offset);
   printf("Applying time_adv_sec=%.1f us, next_offset=%d\n", time_adv_sec_acc*1e6, next_offset);
-}
+}*/
 
-/*void sync::set_time_adv_sec(float time_adv_sec)
+void sync::set_time_adv_sec(float time_adv_sec)
 {
   // Samie
   // If transmitting earlier, transmit less samples to align time advance. If transmit later just delay next TX
-  time_adv_sec = time_adv_sec*4.0;
+  //time_adv_sec = time_adv_sec*4.0;
+  //time_adv_sec = time_adv_sec;
   //next_offset             = (int)round((this->time_adv_sec - time_adv_sec) * srslte_sampling_freq_hz(cell.nof_prb));
   next_offset             = (int)round((this->time_adv_sec - time_adv_sec) * srslte_sampling_freq_hz(cell.nof_prb));
   this->next_time_adv_sec = time_adv_sec;
   Info("Applying time_adv_sec=%.1f us, next_offset=%d\n", time_adv_sec*1e6, next_offset);
   printf("Applying time_adv_sec=%.1f us, next_offset=%d\n", time_adv_sec*1e6, next_offset);
-}*/
+}
 
 float sync::get_tx_cfo()
 {
@@ -1231,6 +1238,12 @@ sync::sfn_sync::decode_mib(srslte_cell_t* cell, uint32_t* tti_cnt, cf_t* ext_buf
         if (tti_cnt) {
           *tti_cnt = 10 * sfn;
           Info("SYNC:  DONE, SNR=%.1f dB, TTI=%d, sfn_offset=%d\n", ue_mib.chest_res.snr_db, *tti_cnt, sfn_offset);
+          //printf("SYNC:  DONE, SNR=%.1f dB, TTI=%d, sfn_offset=%d\n", ue_mib.chest_res.snr_db, *tti_cnt, sfn_offset); // Samie
+	  // Samie
+	  //timeNsOffsetSync = 0;
+	  //timeNsOffset = 0;
+	  //timeNsOffsetFixed = false;
+
         }
 
         reset();

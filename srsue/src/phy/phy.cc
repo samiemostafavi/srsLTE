@@ -345,7 +345,7 @@ uint32_t phy::get_current_earfcn() {
 void phy::prach_send(uint32_t preamble_idx, int allowed_subframe, float target_power_dbm)
 {
   // Samie
-  //sfsync.set_time_adv_sec(0.0f);
+  sfsync.set_time_adv_sec(0.0f);
   if (!prach_buffer.prepare_to_send(preamble_idx, allowed_subframe, target_power_dbm)) {
     Error("Preparing PRACH to send\n");
   }
